@@ -1,0 +1,175 @@
+#!/bin/bash
+
+
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+
+case $key in
+    -b|--branch)
+    BRANCH="$2"
+    shift # past argument
+    shift # past value
+    ;;
+    *)    # unknown option
+    POSITIONAL+=("$1") # save it in an array for later
+    shift # past argument
+    ;;
+esac
+done
+set -- "${POSITIONAL[@]}" # restore positional parameters
+
+NONE="NONE"
+branch_suffixes=(oldest older old bak)
+
+# Are we even in a git repo???
+is_git_repo() {
+  git rev-parse --show-toplevel > /dev/null 2>&1
+  result=$?
+  if test $result != 0; then
+    >&2 echo 'Not a git repo!'
+    exit $result
+  fi
+}
+
+next_newer_backup_suffix() {
+  local __curr=$1
+  local __found=false
+  for i in "${branch_suffixes[@]}"; do
+    if [ "$__found" = true ]; then
+      echo -n "${i}"
+      return
+    fi
+    if [ "${__curr}" = "${i}" ]; then
+      __found=true
+    fi
+  done
+  echo -n $NONE
+}
+
+next_older_backup_suffix() {
+  local __curr=$1
+  local __last=$NONE
+  local __found=false
+
+  for i in "${branch_suffixes[@]}"; do
+    if [ "${__curr}" = "${i}" ]; then
+      echo -n ${__last}
+      return
+    fi
+    __last=$i
+  done
+  echo -n $NONE
+}
+
+# for i in "${branch_suffixes[@]}"; do
+#   echo "Next newer backup suffix for $i:"
+#   echo $(next_older_backup_suffix $i)
+# done
+
+# for i in "${branch_suffixes[@]}"; do
+#   echo "Next older backup suffix for $i:"
+#   echo $(next_newer_backup_suffix $i)
+# done
+
+# exit;
+
+delete_if_necessary() {
+  local __basename=$1
+  local __current="${__basename}-${2}"
+  local __newer="${__basename}-$(next_newer_backup_suffix ${2})"
+
+  # If there is a branch named ${__newer}
+  if git rev-parse --quiet --verify ${__newer} > /dev/null; then
+  # And there is a branch named ${__current}
+    if git rev-parse --quiet --verify ${__current} > /dev/null; then
+      # Delete ${__current} so that ${__newer} can replace it
+      git branch -D ${__current}
+    fi
+  fi
+}
+
+move_if_necessary() {
+  local __basename=$1
+  local __from="${__basename}-${2}"
+  local __to="${__basename}-$(next_older_backup_suffix $2)"
+  local __prev="$(next_newer_backup_suffix $2)"
+  local __prev_branch="${__basename}-${__prev}"
+
+  # echo "from: $__from"
+  # echo "to: $__to"
+  # echo "prev branch: $__prev_branch"
+  
+  if [ "${__prev}" = "$NONE" ] || git rev-parse --quiet --verify ${__prev_branch} > /dev/null; then
+    if git rev-parse --quiet --verify ${__from} > /dev/null; then
+      echo "Moving branch ${__from} to ${__to}"
+      git branch -m ${__from} ${__to}
+    fi
+  fi
+}
+
+move_or_delete_backups() {
+  local __basename=$1
+  local __oldest=( ${branch_suffixes[0]} )
+
+  # local __last=${branch_suffixes_desc[-1]}
+  for i in "${branch_suffixes[@]}"; do
+    if [ "$i" = "$__oldest" ]; then
+      delete_if_necessary $__basename $i
+    else
+      move_if_necessary $__basename $i
+    fi
+  done
+}
+
+# move_or_delete_backups branch1
+# exit;
+
+is_git_repo
+
+test -z $BRANCHNAME && BRANCHNAME=$1
+test -z $BRANCHNAME && BRANCHNAME=`git rev-parse --abbrev-ref HEAD`
+
+# Assert there is a branch name provided
+test -z $BRANCHNAME && echo "branch name required." 1>&2 && exit 1
+
+echo "BRANCH TO BACKUP: ${BRANCHNAME}"
+
+while true
+do
+ read -r -p "Is this correct? [Y/n] " input
+ 
+ case $input in
+  [yY][eE][sS]|[yY])
+    break
+    ;;
+  [nN][oO]|[nN])
+    echo "Aborted."
+    exit 0;
+    break
+    ;;
+  *)
+    echo "Invalid input..."
+    ;;
+ esac
+done
+
+current_branch=`git rev-parse --abbrev-ref HEAD`
+if [ "$current_branch" = "$BRANCHNAME" ]; then
+  if [[ `git status --porcelain` ]]; then
+      echo ""
+      echo "You have uncommitted changes on ${BRANCHNAME}."
+      echo "Commit or stash your changes and try again."
+      exit 1;
+  fi
+fi
+
+# Get the last branch suffix from the array
+newest=${branch_suffixes[${#branch_suffixes[@]}-1]}
+
+echo ""
+echo "BACKING UP: ${BRANCHNAME}"
+echo "----------------------------------------------------"
+move_or_delete_backups $BRANCHNAME
+git branch "${BRANCHNAME}-${newest}" ${BRANCHNAME}
