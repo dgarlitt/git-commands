@@ -1,6 +1,9 @@
 #!/bin/bash
 
+NONE="NONE"
+branch_suffixes=(oldest older old bak)
 
+# Check the command line arguments
 POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
@@ -8,7 +11,7 @@ key="$1"
 
 case $key in
     -b|--branch)
-    BRANCH="$2"
+    FQ_BRANCHNAME="$2"
     shift # past argument
     shift # past value
     ;;
@@ -19,9 +22,6 @@ case $key in
 esac
 done
 set -- "${POSITIONAL[@]}" # restore positional parameters
-
-NONE="NONE"
-branch_suffixes=(oldest older old bak)
 
 # Are we even in a git repo???
 is_git_repo() {
@@ -63,18 +63,6 @@ next_older_backup_suffix() {
   echo -n $NONE
 }
 
-# for i in "${branch_suffixes[@]}"; do
-#   echo "Next newer backup suffix for $i:"
-#   echo $(next_older_backup_suffix $i)
-# done
-
-# for i in "${branch_suffixes[@]}"; do
-#   echo "Next older backup suffix for $i:"
-#   echo $(next_newer_backup_suffix $i)
-# done
-
-# exit;
-
 delete_if_necessary() {
   local __basename=$1
   local __current="${__basename}-${2}"
@@ -96,10 +84,6 @@ move_if_necessary() {
   local __to="${__basename}-$(next_older_backup_suffix $2)"
   local __prev="$(next_newer_backup_suffix $2)"
   local __prev_branch="${__basename}-${__prev}"
-
-  # echo "from: $__from"
-  # echo "to: $__to"
-  # echo "prev branch: $__prev_branch"
   
   if [ "${__prev}" = "$NONE" ] || git rev-parse --quiet --verify ${__prev_branch} > /dev/null; then
     if git rev-parse --quiet --verify ${__from} > /dev/null; then
@@ -123,18 +107,30 @@ move_or_delete_backups() {
   done
 }
 
-# move_or_delete_backups branch1
-# exit;
-
 is_git_repo
 
-test -z $BRANCHNAME && BRANCHNAME=$1
-test -z $BRANCHNAME && BRANCHNAME=`git rev-parse --abbrev-ref HEAD`
+test -z $FQ_BRANCHNAME && FQ_BRANCHNAME=$1
+test -z $FQ_BRANCHNAME && FQ_BRANCHNAME=`git rev-parse --abbrev-ref HEAD`
 
 # Assert there is a branch name provided
-test -z $BRANCHNAME && echo "branch name required." 1>&2 && exit 1
+test -z $FQ_BRANCHNAME && echo "branch name required." 1>&2 && exit 1
 
-echo "BRANCH TO BACKUP: ${BRANCHNAME}"
+extract_branch_name() {
+  local __delimiter="/"
+  local __delimited_name=${FQ_BRANCHNAME}${__delimiter}
+  local __bn_array=()
+
+  while [[ $__delimited_name ]]; do
+    __bn_array+=( "${__delimited_name%%"$__delimiter"*}" )
+    __delimited_name=${__delimited_name#*"$__delimiter"}
+  done
+
+  BRANCHNAME=${__bn_array[${#__bn_array[@]}-1]}
+}
+
+extract_branch_name
+
+echo "BRANCH TO BACKUP: ${FQ_BRANCHNAME}"
 
 while true
 do
@@ -169,7 +165,7 @@ fi
 newest=${branch_suffixes[${#branch_suffixes[@]}-1]}
 
 echo ""
-echo "BACKING UP: ${BRANCHNAME}"
+echo "BACKING UP: ${FQ_BRANCHNAME}"
 echo "----------------------------------------------------"
 move_or_delete_backups $BRANCHNAME
-git branch "${BRANCHNAME}-${newest}" ${BRANCHNAME}
+git branch "${BRANCHNAME}-${newest}" ${FQ_BRANCHNAME}
