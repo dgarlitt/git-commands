@@ -130,28 +130,32 @@ extract_branch_name() {
 
 extract_branch_name
 
-echo "BRANCH TO BACKUP: ${FQ_BRANCHNAME}"
+current_branch=`git rev-parse --abbrev-ref HEAD`
 
-while true
-do
- read -r -p "Is this correct? [Y/n] " input
- 
- case $input in
-  [yY][eE][sS]|[yY])
-    break
-    ;;
-  [nN][oO]|[nN])
-    echo "Aborted."
-    exit 0;
-    break
-    ;;
-  *)
-    echo "Invalid input..."
-    ;;
- esac
+if [ "${current_branch}" = "${BRANCHNAME}" ]; then
+  echo "Backup current branch: ${FQ_BRANCHNAME}"
+else
+  echo "Backup branch: ${FQ_BRANCHNAME}"
+fi
+
+while true; do
+  read -r -p "Is this correct? [Y/n] " input
+
+  case $input in
+    [yY][eE][sS]|[yY])
+      break
+      ;;
+    [nN][oO]|[nN])
+      echo "Aborted."
+      exit 0;
+      break
+      ;;
+    *)
+      echo "Invalid input..."
+      ;;
+  esac
 done
 
-current_branch=`git rev-parse --abbrev-ref HEAD`
 if [ "$current_branch" = "$BRANCHNAME" ]; then
   if [[ `git status --porcelain` ]]; then
       echo ""
@@ -168,4 +172,5 @@ echo ""
 echo "BACKING UP: ${FQ_BRANCHNAME}"
 echo "----------------------------------------------------"
 move_or_delete_backups $BRANCHNAME
+echo "Creating branch ${BRANCHNAME}-${newest} from ${FQ_BRANCHNAME}"
 git branch "${BRANCHNAME}-${newest}" ${FQ_BRANCHNAME}
