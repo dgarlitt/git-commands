@@ -128,12 +128,10 @@ extract_branch_name() {
   BRANCHNAME=${__bn_array[${#__bn_array[@]}-1]}
 }
 
-extract_branch_name
-
 current_branch=`git rev-parse --abbrev-ref HEAD`
 
-if [ "${current_branch}" = "${BRANCHNAME}" ]; then
-  echo "Backup current branch: ${FQ_BRANCHNAME}"
+if [ "${current_branch}" = "${FQ_BRANCHNAME}" ]; then
+  echo "Backup current branch: ${current_branch}"
 else
   echo "Backup branch: ${FQ_BRANCHNAME}"
 fi
@@ -156,14 +154,16 @@ while true; do
   esac
 done
 
-if [ "$current_branch" = "$BRANCHNAME" ]; then
+if [ "$current_branch" = "$FQ_BRANCHNAME" ]; then
   if [[ `git status --porcelain` ]]; then
       echo ""
-      echo "You have uncommitted changes on ${BRANCHNAME}."
+      echo "You have uncommitted changes on ${current_branch}."
       echo "Commit or stash your changes and try again."
       exit 1;
   fi
 fi
+
+extract_branch_name
 
 # Get the last branch suffix from the array
 newest=${branch_suffixes[${#branch_suffixes[@]}-1]}
